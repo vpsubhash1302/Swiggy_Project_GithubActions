@@ -74,7 +74,7 @@ jobs:
   deploy-eks:
     name: Deploy to EKS
     runs-on: ubuntu-latest
-    needs: push-image
+    needs: trivy-image-scan
     steps:
       - uses: actions/checkout@v4
 
