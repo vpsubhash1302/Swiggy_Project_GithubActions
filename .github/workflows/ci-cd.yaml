@@ -6,54 +6,89 @@ on:
       - main
 
 jobs:
-  build-scan-deploy:
+
+  checkout:
+    name: Checkout Code
     runs-on: ubuntu-latest
-
     steps:
-    - name: Checkout Code
-      uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    # 🔍 TRIVY FILE SYSTEM SCAN
-    - name: Trivy File System Scan
-      uses: aquasecurity/trivy-action@master
-      with:
-        scan-type: fs
-        severity: HIGH,CRITICAL
-        exit-code: 0
+  trivy-fs-scan:
+    name: Trivy File System Scan
+    runs-on: ubuntu-latest
+    needs: checkout
+    steps:
+      - uses: actions/checkout@v4
 
-    - name: Login to DockerHub
-      uses: docker/login-action@v3
-      with:
-        username: ${{ secrets.DOCKERHUB_USERNAME }}
-        password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Trivy FS Scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          severity: HIGH,CRITICAL
+          exit-code: 0
 
-    - name: Build Docker Image
-      run: |
-        docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/swiggy-react-app:latest .
+  build-image:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    needs: trivy-fs-scan
+    steps:
+      - uses: actions/checkout@v4
 
-    # 🔍 TRIVY IMAGE SCAN
-    - name: Trivy Image Scan
-      uses: aquasecurity/trivy-action@master
-      with:
-        image-ref: ${{ secrets.DOCKERHUB_USERNAME }}/swiggy-react-app:latest
-        severity: HIGH,CRITICAL
-        exit-code: 0
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-    - name: Push Image to DockerHub
-      run: |
-        docker push ${{ secrets.DOCKERHUB_USERNAME }}/swiggy-react-app:latest
+      - name: Build Image
+        run: |
+          docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/swiggy-react-app:latest .
 
-    - name: Configure AWS Credentials
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ secrets.AWS_REGION }}
+  trivy-image-scan:
+    name: Trivy Image Scan
+    runs-on: ubuntu-latest
+    needs: build-image
+    steps:
+      - name: Trivy Image Scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ secrets.DOCKERHUB_USERNAME }}/swiggy-react-app:latest
+          severity: HIGH,CRITICAL
+          exit-code: 0
 
-    - name: Update kubeconfig
-      run: |
-        aws eks update-kubeconfig --name ${{ secrets.EKS_CLUSTER_NAME }}
+  push-image:
+    name: Push Image to DockerHub
+    runs-on: ubuntu-latest
+    needs: trivy-image-scan
+    steps:
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-    - name: Deploy to EKS
-      run: |
-        kubectl apply -f k8s/
+      - name: Push Image
+        run: |
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/swiggy-react-app:latest
+
+  deploy-eks:
+    name: Deploy to EKS
+    runs-on: ubuntu-latest
+    needs: push-image
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig --name ${{ secrets.EKS_CLUSTER_NAME }}
+
+      - name: Deploy to EKS
+        run: |
+          kubectl apply -f k8s/
