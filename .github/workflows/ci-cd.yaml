@@ -47,7 +47,7 @@ jobs:
   push-image:
     name: Push Image to DockerHub
     runs-on: ubuntu-latest
-    needs: trivy-image-scan
+    needs: build-image
     steps:
       - name: Login to DockerHub
         uses: docker/login-action@v3
