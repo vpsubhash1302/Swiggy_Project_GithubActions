@@ -44,18 +44,6 @@ jobs:
         run: |
           docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/swiggy-react-app:latest .
 
-  trivy-image-scan:
-    name: Trivy Image Scan
-    runs-on: ubuntu-latest
-    needs: build-image
-    steps:
-      - name: Trivy Image Scan
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: ${{ secrets.DOCKERHUB_USERNAME }}/swiggy-react-app:latest
-          severity: HIGH,CRITICAL
-          exit-code: 0
-
   push-image:
     name: Push Image to DockerHub
     runs-on: ubuntu-latest
@@ -70,6 +58,18 @@ jobs:
       - name: Push Image
         run: |
           docker push ${{ secrets.DOCKERHUB_USERNAME }}/swiggy-react-app:latest
+
+  trivy-image-scan:
+    name: Trivy Image Scan
+    runs-on: ubuntu-latest
+    needs: push-image
+    steps:
+      - name: Trivy Image Scan (Remote Image)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ secrets.DOCKERHUB_USERNAME }}/swiggy-react-app:latest
+          severity: HIGH,CRITICAL
+          exit-code: 0
 
   deploy-eks:
     name: Deploy to EKS
